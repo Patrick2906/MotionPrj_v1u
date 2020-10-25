@@ -12,6 +12,8 @@
 u16 MotionFlags=bmStartup,MotionFlags2=0;
 u16 nDelayTime;
 u8 strAT[MAX_STRLEN],*strxAT,strBuf[MAX_STRLEN],*strxBuf=strBuf;
+u8 uartTx[MAX_STRLEN];
+u8 singleWord;
 bool bCmpEnd=FALSE;
 u8 nLuxLevel=DEF_LUXLEVEL, nPirLevel=DEF_PIRLEVEL,nPirHoldTime=DEF_PIRHOLDTIME,nLowBatTime=DEF_LOWBATTIME,nTCount=0,nPressed=0;
 u8 nlenstrAT;
@@ -30,23 +32,60 @@ u8 FromChar09AF(u8 nChar)  //nChar='0'..'9','A'..'F'
 	
 u8 putchar (u8 c)
 {
-	disableInterrupts(); 
-  while(!(USART1->SR & (1<<6)));
 	USART1->DR=(u8)c;
-	enableInterrupts(); 
-
   return (c);
 }
 
-void myputs(u8 *str)
+bool myputs(u8 *str, u8 dataLen, bool signleWord)
 {
-	while(*str!=0)
+	u8 timeoutCnt;
+	u8 i,len;
+	
+	disableInterrupts();
+ 	USART1->CR2 &= (~USART_Mode_Rx);	// disable Receive
+	
+	len = dataLen;
+	// copy to uartTx buffer
+	for(i = 0; i< dataLen; i++)
 	{
-		putchar(*str);
+		uartTx[i] = *str;
 		str++;
 	}
-	putchar(0x0D);
-	putchar(0x0A);
+	if(!signleWord)
+	{
+		uartTx[i] = 0x0D;
+		uartTx[i+1] = 0x0A;	
+		len += 2;
+	}
+	// last two bytes
+
+	
+	for(i = 0; len > 0; i++,len--)
+	{
+		timeoutCnt = 200;
+		// transmit empty?
+		while(!(USART1->SR & USART_FLAG_TXE) || (timeoutCnt == 0))
+		{
+			timeoutCnt--;
+		}
+		// send next data
+		USART1->SR &= (~USART_FLAG_TXE);	//clear by SW
+		putchar(uartTx[i]);
+	}
+	timeoutCnt = 200;
+	// wait until transmit complete
+	while(!(USART1->SR & USART_FLAG_TC) || (timeoutCnt == 0))
+	{
+		timeoutCnt--;
+	}
+	
+//	putchar(0x0D);
+//	putchar(0x0A);
+	
+	USART1->CR2 |= USART_Mode_Rx;	// enable Receive
+	enableInterrupts();
+	
+	return (timeoutCnt > 0);
 }
 
 bool mystrcmp(u8 *strat,u8 *strstandard)  //return TRUE if strat has same former part of strstandard; bCmpEnd indicates totally match
@@ -71,13 +110,13 @@ void ParseAtCmd(void) //Processed by visual effect, to be interacted via hyper t
 	bool bGoodCmd=FALSE,bcmdLed=FALSE,bcmdLowBat=FALSE;
 	
 	if(MotionFlags&bmCmdEcho)
-		myputs(strAT);
+		myputs(strAT, 0, TRUE);
 	MotionFlags&=~bmLedDelay;
 	if(mystrcmp(strAT, "AT"))
 	{
 		if(bCmpEnd)
 		{
-			myputs(STR_FWVER);
+			myputs(STR_FWVER, 15, FALSE);
 //		putchar(ToChar09AF(nPirHoldTime>>4));
 //		putchar(ToChar09AF(nPirHoldTime&0x0F));
 //		putchar(0x30+nPirLevel);
@@ -134,7 +173,7 @@ void ParseAtCmd(void) //Processed by visual effect, to be interacted via hyper t
 				byteTxD[5]=ToChar09AF(nInt&0x0F);
 				byteTxD[6]=0;
 				
-				myputs(byteTxD);
+				myputs(byteTxD, 6, FALSE);
 				bGoodCmd=TRUE;
 			}
 		}else
@@ -142,7 +181,7 @@ void ParseAtCmd(void) //Processed by visual effect, to be interacted via hyper t
 		{
 			if(bCmpEnd)
 			{
-				myputs(STR_FWVER);
+				myputs(STR_FWVER, 15, FALSE);
 				bGoodCmd=TRUE;
 				WWDG->CR|=0x80;
 				WWDG->CR&=~0x40;
@@ -162,7 +201,7 @@ void ParseAtCmd(void) //Processed by visual effect, to be interacted via hyper t
 				WriteEeprom(EEPROM_LUXSSLV, nLuxLevel);
 				WriteEeprom(EEPROM_LOWBATTIME, nLowBatTime);
 				Pir_SetConfig(TRUE);
-				myputs(STR_FWVER);
+				myputs(STR_FWVER, 15, FALSE);
 				bGoodCmd=TRUE;
 			}
 		}else
@@ -177,7 +216,7 @@ void ParseAtCmd(void) //Processed by visual effect, to be interacted via hyper t
 				byteTxD[1]=strAT[7];
 				byteTxD[2]=strAT[8];
 				byteTxD[3]=0;
-				myputs(byteTxD);
+				myputs(byteTxD, 3, FALSE);
 
 				byteTxD[4]=FromChar09AF(strAT[6])&3;
 				offPinLedGreen;
@@ -288,7 +327,7 @@ void ParseAtCmd(void) //Processed by visual effect, to be interacted via hyper t
 				byteTxD[0]=ToChar09AF(nPirLevel);
 				byteTxD[1]=ToChar09AF(nPirHoldTime);
 				byteTxD[2]=0;
-				myputs(byteTxD);
+				myputs(byteTxD, 2, FALSE);
 			}
 		}else
 		if(mystrcmp(strAT, "ATLUX"))
@@ -320,7 +359,7 @@ void ParseAtCmd(void) //Processed by visual effect, to be interacted via hyper t
 //				myputs("ATLUX[x] got!");
 				byteTxD[0]=ToChar09AF(nLuxLevel);
 				byteTxD[1]=0;
-				myputs(byteTxD);
+				myputs(byteTxD, 1, FALSE);
 			}
 		}else
 		if(mystrcmp(strAT, "ATLOWBAT"))
@@ -353,13 +392,13 @@ void ParseAtCmd(void) //Processed by visual effect, to be interacted via hyper t
 				byteTxD[0]=ToChar09AF(nLowBatTime>>4);
 				byteTxD[1]=ToChar09AF(nLowBatTime&0x0F);
 				byteTxD[2]=0;
-				myputs(byteTxD);
+				myputs(byteTxD, 2, FALSE);
 			}
 		}
 	}
 
 	if(!bGoodCmd)
-		myputs(STR_BADCMD);
+		myputs(STR_BADCMD, 7, FALSE);
 	if((!(MotionFlags&bmBtnDown))&&(!bcmdLed))
 	{
 		MotionFlags|=bmHalt;
@@ -474,7 +513,11 @@ int main()
 		if(MotionFlags&bmHalt)
 		{
 			MotionFlags&=~bmHalt;
-			if(MotionFlags&bmCmdEcho)	putchar('z');
+			if(MotionFlags&bmCmdEcho)
+			{
+				singleWord = 'z';
+				myputs(&singleWord, 1, TRUE);
+			}
 			TD_Delay01ms(20);
 			TD_Init(FALSE);
 //		oPinPirDoci;  //pull down to low at least 100ns to clear PIR INT
@@ -486,7 +529,11 @@ int main()
 //		clrPinPirDoci;
 			TD_Init(TRUE);// 系统初始化函数，醒来时执行
 			TD_Delay01ms(200);
-			if(MotionFlags&bmCmdEcho)	putchar('.');
+			if(MotionFlags&bmCmdEcho)	
+			{
+				singleWord = ',';
+				myputs(&singleWord, 1, TRUE);
+			}
 			intPinPirDoci;
 //			onPinLedGreen;nTCount=0;MotionFlags|=bmStartup;
 		}else 
@@ -496,7 +543,11 @@ int main()
 				intPinPirDoci;
 
 //				setPinPB4;
-				if(MotionFlags&bmCmdEcho)	putchar('x');
+				if(MotionFlags&bmCmdEcho)
+				{
+					singleWord = 'x';
+					myputs(&singleWord, 1, TRUE);
+				}
 				TD_Delay01ms(100);
 //				clrPinPB4;
 				MotionFlags&=~bmIntPir;
@@ -505,7 +556,11 @@ int main()
 			if(MotionFlags&bmNeedAtCmd)
 			{
 				clrPinMyIntn;
-				if(MotionFlags&bmCmdEcho)	putchar('a');
+				if(MotionFlags&bmCmdEcho)
+				{
+					singleWord= 'a';
+					myputs(&singleWord, 1, TRUE);
+				}
 				MotionFlags&=~bmNeedAtCmd;
 			}
 			if(MotionFlags&bmValidCmd)
@@ -524,7 +579,11 @@ int main()
 			}
 			if(MotionFlags&bmBtnDown)
 			{
-				if(MotionFlags&bmCmdEcho)	putchar('y');
+				if(MotionFlags&bmCmdEcho)
+				{
+					singleWord = 'y';
+					myputs(&singleWord, 1, TRUE);
+				}
 				TD_Delay01ms(250);
 				TD_Delay01ms(250);
 				TD_Delay01ms(250);  //debounce 75ms
@@ -660,9 +719,21 @@ INTERRUPT_HANDLER(ISR_Timer2,19)  //0.25s
 
 INTERRUPT_HANDLER(ISR_Uart1Rx,28)
 {
-		if(USART1->DR ==13)
+	/***** enter *****
+	Windows:	\r\n
+	Unix: 		\n
+	******************/
+
+	if(USART1->SR & USART_FLAG_RXNE)
+	{
+		u8 dataTemp;
+		dataTemp = USART1->DR;	// read register to clear RXNE
+		
+		if(dataTemp == 0x0D)
 		{
-			*strxBuf = 0;
+			*strxBuf = 0;	// insert NULL
+			strxBuf++;
+			*strxBuf = dataTemp;
 			strxAT=strAT;
 			strxBuf=strBuf;
 			nlenstrAT=0;
@@ -672,22 +743,29 @@ INTERRUPT_HANDLER(ISR_Uart1Rx,28)
 				strxBuf++;
 				strxAT++;
 				nlenstrAT++;
-//				putchar(*strxAT);
 			}
 			*strxAT=0;
 			strxBuf=strBuf;
 			MotionFlags|=bmValidCmd;
-		}else
+		}
+		else if(dataTemp == 0x0A)
 		{
-			*strxBuf =USART1->DR;
-//putchar(*strxBuf);
+			if(strBuf[nlenstrAT+1] == 0x0D)
+			{
+				strBuf[nlenstrAT+2] = dataTemp;
+			}
+		}
+		else
+		{
+			*strxBuf =  dataTemp;	
+
 			if((strxBuf-strBuf)<(MAX_STRLEN-1))
 			{
 				strxBuf++;
 			}
-//		USART_ClearITPendingBit(USART1, USART_IT_RXNE);
-  }
-}
 
+		}
+	}
+}
 
 		
