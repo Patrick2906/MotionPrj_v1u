@@ -112,6 +112,14 @@
 #define TIME_MIDPRESS (20)  //5s 4Hz 
 #define TIME_SHORTPRESS (8)  //2s 4Hz 
 
+typedef struct PirModule
+{
+	uint8_t hr;
+	uint8_t min;
+	uint8_t sec;
+	bool timerTrigger;
+}PirModule;
+
 extern u16 MotionFlags,MotionFlags2;
 extern u8 nLuxLevel, nPirLevel, nPirHoldTime,nLowBatTime;
 

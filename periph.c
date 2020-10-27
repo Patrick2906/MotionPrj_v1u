@@ -1,14 +1,28 @@
 //periph.c
 #include "motion.h"
 
+bool RTC_CheckFinished(void)
+{
+	
+}
+
 void RTC_SetWakeupPeriod(bool bMode)  //true: For low battery mode; false: for PIR recheck
 {
-	u16 T=bMode?((nLowBatTime+1)*2):(nPirHoldTime+1);
-	RTC_WakeUpClockConfig(RTC_WakeUpClock_RTCCLK_Div16);
+	u16 T;
+	if(bMode == TRUE)
+	{
+		T = nLowBatTime+1;
+	}
+	else
+	{
+		
+	}
+
+	RTC_WakeUpClockConfig(RTC_WakeUpClock_CK_SPRE_16bits);
 	RTC_ITConfig(RTC_IT_WUT, ENABLE);
 	
   RTC_WakeUpCmd(DISABLE);
-  RTC_SetWakeUpCounter(75*T);  //wakeup 150/s
+  RTC_SetWakeUpCounter(T);  //wakeup 150/s
   RTC_WakeUpCmd(ENABLE);
 }
 

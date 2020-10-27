@@ -18,6 +18,14 @@ bool bCmpEnd=FALSE;
 u8 nLuxLevel=DEF_LUXLEVEL, nPirLevel=DEF_PIRLEVEL,nPirHoldTime=DEF_PIRHOLDTIME,nLowBatTime=DEF_LOWBATTIME,nTCount=0,nPressed=0;
 u8 nlenstrAT;
 
+PirModule pirModule =
+{
+	0,
+	0,
+	DEF_PIRHOLDTIME,
+	FALSE
+};
+
 u8 ToChar09AF(u8 nNum)  //nNum=0..15
 {
 	u8 nChar=(nNum<=9)?(0x30+nNum):(0x41+nNum-10);
@@ -488,7 +496,7 @@ void TD_Delay01ms(u8 d)  //unit: 0.1ms
 int main() 
 { 
 	CLK_SYSCLKDivConfig(CLK_SYSCLKDiv_1);
-  CLK_RTCClockConfig(CLK_RTCCLKSource_LSI, CLK_RTCCLKDiv_16);
+  CLK_RTCClockConfig(CLK_RTCCLKSource_LSI, CLK_RTCCLKDiv_1);
   CLK_PeripheralClockConfig(CLK_Peripheral_RTC, ENABLE);
 
 	FLASH_SetProgrammingTime(FLASH_ProgramTime_Standard);
@@ -505,7 +513,7 @@ int main()
 	ReadEeprom();
 //		myputs("X\x0C Com1 good...");
 	intPinPirDoci;
-		
+	
 	while(1)
 	{
 		TD_Delay01ms(20);
@@ -548,6 +556,8 @@ int main()
 					singleWord = 'x';
 					myputs(&singleWord, 1, TRUE);
 				}
+				singleWord = 'p';
+				myputs(&singleWord, 1, TRUE);
 				TD_Delay01ms(100);
 //				clrPinPB4;
 				MotionFlags&=~bmIntPir;
