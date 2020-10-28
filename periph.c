@@ -1,28 +1,59 @@
 //periph.c
 #include "motion.h"
 
-bool RTC_CheckFinished(void)
+struct RTC_Clk
 {
-	
-}
+	uint8_t hr;
+	uint8_t min;
+	uint8_t sec;
+}rtcClk;
 
-void RTC_SetWakeupPeriod(bool bMode)  //true: For low battery mode; false: for PIR recheck
+bool RTC_CheckFinished(const PirModule* pir)
 {
-	u16 T;
-	if(bMode == TRUE)
+	if(pir->timerTrigger == TRUE)
 	{
-		T = nLowBatTime+1;
+		return FALSE;
 	}
 	else
 	{
-		
+		return TRUE;
 	}
+}
 
+void RTC_Reset(const PirModule* pir)
+{
+	rtcClk.hr = pir->hr;
+	rtcClk.min = pir->min;
+	rtcClk.sec = pir->sec;
+}
+
+bool RTC_UpdateClk(PirModule* pir)
+{
+	if((rtcClk.hr != 0) || (rtcClk.min != 0) || (rtcClk.sec != 0))
+	{
+		u16 newPeriod;
+		newPeriod = 3600 + rtcClk.min*60 + rtcClk.sec;
+		
+		rtcClk.hr--;
+		rtcClk.min = 0;
+		rtcClk.sec = 0;
+		RTC_SetWakeupPeriod(newPeriod);
+		return FALSE;
+	}
+	else
+	{
+		pir->timerTrigger = FALSE;
+		return TRUE;
+	}
+}
+
+void RTC_SetWakeupPeriod(u16 period)  //true: For low battery mode; false: for PIR recheck
+{
 	RTC_WakeUpClockConfig(RTC_WakeUpClock_CK_SPRE_16bits);
 	RTC_ITConfig(RTC_IT_WUT, ENABLE);
 	
   RTC_WakeUpCmd(DISABLE);
-  RTC_SetWakeUpCounter(T);  //wakeup 150/s
+  RTC_SetWakeUpCounter(period); 
   RTC_WakeUpCmd(ENABLE);
 }
 

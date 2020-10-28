@@ -17,7 +17,7 @@
 #include "stm8l15x_flash.h"
 //#include <stdio.h>
 
-#define MAX_STRLEN 18
+#define MAX_STRLEN 20
 #define STR_FWVER "IBBW01_4 200122"
 #define STR_BADCMD "BADCMD!"
 #define TD_Delay() {for(x=0;x<40;x++) ;}
@@ -120,6 +120,7 @@ typedef struct PirModule
 	bool timerTrigger;
 }PirModule;
 
+
 extern u16 MotionFlags,MotionFlags2;
 extern u8 nLuxLevel, nPirLevel, nPirHoldTime,nLowBatTime;
 
@@ -129,7 +130,10 @@ extern u8 putchar (u8 c);
 extern bool myputs(u8 *str, u8 dataLen, bool signleWord);
 
 //periph.c
-extern void RTC_SetWakeupPeriod(bool bMode);
+bool RTC_CheckFinished(const PirModule* pir);
+void RTC_Reset(const PirModule* pir);
+bool RTC_UpdateClk(PirModule* pir);
+extern void RTC_SetWakeupPeriod(u16 period);
 extern u16 Lux_GetReading(u8 addr);
 extern void Lux_SetMTreg(void);
 extern void Lux_SendCmd(u8 cmd);

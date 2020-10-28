@@ -12,7 +12,7 @@
 u16 MotionFlags=bmStartup,MotionFlags2=0;
 u16 nDelayTime;
 u8 strAT[MAX_STRLEN],*strxAT,strBuf[MAX_STRLEN],*strxBuf=strBuf;
-u8 uartTx[MAX_STRLEN];
+u8 uartTx[18];
 u8 singleWord;
 bool bCmpEnd=FALSE;
 u8 nLuxLevel=DEF_LUXLEVEL, nPirLevel=DEF_PIRLEVEL,nPirHoldTime=DEF_PIRHOLDTIME,nLowBatTime=DEF_LOWBATTIME,nTCount=0,nPressed=0;
@@ -22,9 +22,10 @@ PirModule pirModule =
 {
 	0,
 	0,
-	DEF_PIRHOLDTIME,
+	0,
 	FALSE
 };
+
 
 u8 ToChar09AF(u8 nNum)  //nNum=0..15
 {
@@ -93,7 +94,7 @@ bool myputs(u8 *str, u8 dataLen, bool signleWord)
 	USART1->CR2 |= USART_Mode_Rx;	// enable Receive
 	enableInterrupts();
 	
-	return (timeoutCnt > 0);
+	return 1;
 }
 
 bool mystrcmp(u8 *strat,u8 *strstandard)  //return TRUE if strat has same former part of strstandard; bCmpEnd indicates totally match
@@ -295,18 +296,32 @@ void ParseAtCmd(void) //Processed by visual effect, to be interacted via hyper t
 			{
 				if(mystrcmp(strAT, "ATPIRHDTM="))
 				{
-					if(bCmpEnd||nlenstrAT!=11)
+					if(bCmpEnd||nlenstrAT!=18)
 					{
 					}else
 					{
-						byteTxD[4]=FromChar09AF(strAT[10]);  //byteTxD[4]: temp variable
-						if(byteTxD[4]!=0)
+						// ATPIRHDTM=hh:mm:ss
+						u8 i,j;
+						for(i = 0; i< 3; i += 3)
 						{
-							nPirHoldTime=byteTxD[4];
-							Pir_SetConfig(TRUE);
-							WriteEeprom(EEPROM_PIRHDTM, nPirHoldTime);
-							bGoodCmd=TRUE;
+							for(j =0; j < 2; j++)
+							{
+								byteTxD[0] = FromChar09AF(strAT[i + j + 10]);//byteTxD[4]: temp variable
+							}
 						}
+
+
+						// update pir wake up
+						pirModule.hr = byteTxD[0]*10 + byteTxD[1];
+						pirModule.min = byteTxD[2]*10 + byteTxD[3];
+						pirModule.sec = byteTxD[4]*10 + byteTxD[5];
+							
+						nPirHoldTime = pirModule.sec - 1;
+													
+						Pir_SetConfig(TRUE);
+						WriteEeprom(EEPROM_PIRHDTM, nPirHoldTime);
+						bGoodCmd=TRUE;
+						
 					}
 				}else
 				if(mystrcmp(strAT, "ATPIRSSLV="))
@@ -395,7 +410,7 @@ void ParseAtCmd(void) //Processed by visual effect, to be interacted via hyper t
 			}
 			if(bGoodCmd)
 			{
-				RTC_SetWakeupPeriod(TRUE);
+				RTC_SetWakeupPeriod(nLowBatTime + 1);
 				MotionFlags2|=bm2LowBat;
 				byteTxD[0]=ToChar09AF(nLowBatTime>>4);
 				byteTxD[1]=ToChar09AF(nLowBatTime&0x0F);
@@ -656,11 +671,21 @@ INTERRUPT_HANDLER(ISR_RtcWakeUp,4)  //For low battery mode
 		nDelayTime=3;
 		MotionFlags|=bmLedRedFlash;
 		MotionFlags|=bmLedDelay;
-	}else
+	}
+	else
 	{
-		MotionFlags|=bmNeedAtCmd;
-		MotionFlags2|=bm2PirRecheck;
-		RTC_WakeUpCmd(DISABLE);
+		if(RTC_UpdateClk(&pirModule) == TRUE)
+		{
+			MotionFlags|=bmNeedAtCmd;
+			MotionFlags2|=bm2PirRecheck;
+			RTC_WakeUpCmd(DISABLE);	// stop rtc		
+		}
+		else
+		{
+			MotionFlags|=bmHalt;
+		}
+
+		
 	}
 	RTC_ClearITPendingBit(RTC_IT_WUT);
 }
@@ -672,10 +697,22 @@ INTERRUPT_HANDLER(ISR_Pir,15)  //PB7 Rising Edge to INT
 
 	oPinPirDoci;  //pull down to low at least 100ns to clear PIR INT
 	clrPinPirDoci;
-	MotionFlags|=bmIntPir;
-	MotionFlags|=bmIntPirStaCmd;
-	MotionFlags|=bmNeedAtCmd;
-	RTC_SetWakeupPeriod(FALSE);
+	if(RTC_CheckFinished(&pirModule) == TRUE)
+	{
+		// first time trigger
+		MotionFlags|=bmIntPir;
+		MotionFlags|=bmIntPirStaCmd;
+		MotionFlags|=bmNeedAtCmd;
+		pirModule.timerTrigger = TRUE;
+	}
+	else
+	{
+		// re-trigger during 
+		RTC_Reset(&pirModule);
+		RTC_UpdateClk(&pirModule);
+	}
+
+
 //	iPinPirDoci;
 	EXTI_ClearITPendingBit(EXTI_IT_Pin7);
 }
@@ -778,4 +815,6 @@ INTERRUPT_HANDLER(ISR_Uart1Rx,28)
 	}
 }
 
-		
+
+
+
