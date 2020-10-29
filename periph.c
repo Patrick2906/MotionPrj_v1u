@@ -6,7 +6,10 @@ struct RTC_Clk
 	uint8_t hr;
 	uint8_t min;
 	uint8_t sec;
-}rtcClk;
+}rtcClk = {0,0,0};
+
+u8 eepromData[7];
+
 
 bool RTC_CheckFinished(const PirModule* pir)
 {
@@ -29,27 +32,37 @@ void RTC_Reset(const PirModule* pir)
 
 bool RTC_UpdateClk(PirModule* pir)
 {
-	if((rtcClk.hr != 0) || (rtcClk.min != 0) || (rtcClk.sec != 0))
+	u16 newPeriod;
+	if(rtcClk.hr > 0)
 	{
-		u16 newPeriod;
-		newPeriod = 3600 + rtcClk.min*60 + rtcClk.sec;
-		
+		newPeriod = 3600;
 		rtcClk.hr--;
-		rtcClk.min = 0;
+	}
+	else
+	{
+		newPeriod = rtcClk.sec + rtcClk.min * 60;
 		rtcClk.sec = 0;
+		rtcClk.min = 0;
+	}
+	
+	if(newPeriod > 0)
+	{
+		// continue rtc
 		RTC_SetWakeupPeriod(newPeriod);
-		return FALSE;
+		return FALSE;	
 	}
 	else
 	{
 		pir->timerTrigger = FALSE;
 		return TRUE;
 	}
+	
+
 }
 
 void RTC_SetWakeupPeriod(u16 period)  //true: For low battery mode; false: for PIR recheck
 {
-	RTC_WakeUpClockConfig(RTC_WakeUpClock_CK_SPRE_16bits);
+//	RTC_WakeUpClockConfig(RTC_WakeUpClock_CK_SPRE_16bits);
 	RTC_ITConfig(RTC_IT_WUT, ENABLE);
 	
   RTC_WakeUpCmd(DISABLE);
@@ -285,11 +298,23 @@ void Pir_SetConfig(bool bNormal)  //using global nPirLevel(1..8), nPirHoldTimeRe
 
 void ReadEeprom()
 {
-	nPirHoldTime=FLASH_ReadByte(EEPROM_PIRHDTM);
-	nPirLevel=FLASH_ReadByte(EEPROM_PIRSSLV);
-	nLuxLevel=FLASH_ReadByte(EEPROM_LUXSSLV);
-	nLowBatTime=FLASH_ReadByte(EEPROM_LOWBATTIME);
+
+	u8 i;
 	
+	for(i = 0; i <7; i++)
+	{
+		eepromData[i] = FLASH_ReadByte(EEPROM_PIRHDTM + i);
+	}
+	
+	nPirHoldTime=eepromData[0];
+	nPirLevel=eepromData[1];
+	nLuxLevel=eepromData[2];
+	nLowBatTime=eepromData[3];
+	
+	pirModule.hr = eepromData[4];
+	pirModule.min = eepromData[5];
+	pirModule.sec = eepromData[6];
+	/*
 	if((nPirHoldTime==0)||(nPirHoldTime>MAX_PIRHOLDTIME))
 	{
 		nPirHoldTime=DEF_PIRHOLDTIME;
@@ -310,6 +335,7 @@ void ReadEeprom()
 		nLowBatTime=DEF_LOWBATTIME;
 		WriteEeprom(EEPROM_LOWBATTIME, nLowBatTime);
 	}
+	*/
 }
 
 void WriteEeprom(u32 addr, u8 data)

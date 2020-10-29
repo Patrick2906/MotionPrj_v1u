@@ -18,13 +18,7 @@ bool bCmpEnd=FALSE;
 u8 nLuxLevel=DEF_LUXLEVEL, nPirLevel=DEF_PIRLEVEL,nPirHoldTime=DEF_PIRHOLDTIME,nLowBatTime=DEF_LOWBATTIME,nTCount=0,nPressed=0;
 u8 nlenstrAT;
 
-PirModule pirModule =
-{
-	0,
-	0,
-	0,
-	FALSE
-};
+PirModule pirModule;
 
 
 u8 ToChar09AF(u8 nNum)  //nNum=0..15
@@ -301,12 +295,14 @@ void ParseAtCmd(void) //Processed by visual effect, to be interacted via hyper t
 					}else
 					{
 						// ATPIRHDTM=hh:mm:ss
-						u8 i,j;
-						for(i = 0; i< 3; i += 3)
+						u8 i,j,k;
+						u8* time;
+						for(i = 0; i < 7; i += 3)
 						{
 							for(j =0; j < 2; j++)
 							{
-								byteTxD[0] = FromChar09AF(strAT[i + j + 10]);//byteTxD[4]: temp variable
+								byteTxD[k] = FromChar09AF(strAT[i + j + 10]);//byteTxD[4]: temp variable
+								k++;
 							}
 						}
 
@@ -315,9 +311,19 @@ void ParseAtCmd(void) //Processed by visual effect, to be interacted via hyper t
 						pirModule.hr = byteTxD[0]*10 + byteTxD[1];
 						pirModule.min = byteTxD[2]*10 + byteTxD[3];
 						pirModule.sec = byteTxD[4]*10 + byteTxD[5];
-							
+						time = &pirModule.hr;
+						for(i = 0; i < 3; i++)
+						{
+							 WriteEeprom(EEPROM_PIRWAKEUP_HR+i,*time);
+							 time++;
+						}
+						
 						nPirHoldTime = pirModule.sec - 1;
-													
+						if(nPirHoldTime>MAX_PIRHOLDTIME)
+						{
+							nPirHoldTime = MAX_PIRHOLDTIME;
+						}
+	
 						Pir_SetConfig(TRUE);
 						WriteEeprom(EEPROM_PIRHDTM, nPirHoldTime);
 						bGoodCmd=TRUE;
@@ -335,6 +341,10 @@ void ParseAtCmd(void) //Processed by visual effect, to be interacted via hyper t
 						{
 							nPirLevel=byteTxD[4];
 							Pir_SetConfig(TRUE);
+							if((nPirLevel==0)||(nPirLevel>MAX_PIRLEVEL))
+							{
+								nPirLevel=DEF_PIRLEVEL;
+							}
 							WriteEeprom(EEPROM_PIRSSLV, nPirLevel);
 							bGoodCmd=TRUE;
 						}
@@ -371,6 +381,10 @@ void ParseAtCmd(void) //Processed by visual effect, to be interacted via hyper t
 						{
 							nLuxLevel=byteTxD[4];
 							Lux_SetMTreg();
+							if((nLuxLevel==0)||(nLuxLevel>MAX_LUXLEVEL))
+							{
+								nLuxLevel=DEF_LUXLEVEL;
+							}
 							WriteEeprom(EEPROM_LUXSSLV, nLuxLevel);
 							bGoodCmd=TRUE;
 						}
@@ -402,6 +416,10 @@ void ParseAtCmd(void) //Processed by visual effect, to be interacted via hyper t
 						if(byteTxD[4]!=0)
 						{
 							nLowBatTime=byteTxD[4];
+							if((nLowBatTime==0)||(nLowBatTime>MAX_LOWBATTIME))
+							{
+								nLowBatTime=DEF_LOWBATTIME;
+							}
 							WriteEeprom(EEPROM_LOWBATTIME, nLowBatTime);
 							bGoodCmd=TRUE;
 						}
@@ -513,7 +531,9 @@ int main()
 	CLK_SYSCLKDivConfig(CLK_SYSCLKDiv_1);
   CLK_RTCClockConfig(CLK_RTCCLKSource_LSI, CLK_RTCCLKDiv_1);
   CLK_PeripheralClockConfig(CLK_Peripheral_RTC, ENABLE);
-
+	//RTC_WakeUpCmd(DISABLE);
+	RTC_WakeUpClockConfig(RTC_WakeUpClock_CK_SPRE_16bits);
+	
 	FLASH_SetProgrammingTime(FLASH_ProgramTime_Standard);
 	MotionFlags=bmStartup;
 	nTCount=0;
@@ -682,9 +702,8 @@ INTERRUPT_HANDLER(ISR_RtcWakeUp,4)  //For low battery mode
 		}
 		else
 		{
-			MotionFlags|=bmHalt;
+			MotionFlags|=bmHalt; 	// continue for sleep mode
 		}
-
 		
 	}
 	RTC_ClearITPendingBit(RTC_IT_WUT);
@@ -697,7 +716,7 @@ INTERRUPT_HANDLER(ISR_Pir,15)  //PB7 Rising Edge to INT
 
 	oPinPirDoci;  //pull down to low at least 100ns to clear PIR INT
 	clrPinPirDoci;
-	if(RTC_CheckFinished(&pirModule) == TRUE)
+	if(pirModule.timerTrigger == FALSE)
 	{
 		// first time trigger
 		MotionFlags|=bmIntPir;
@@ -707,11 +726,12 @@ INTERRUPT_HANDLER(ISR_Pir,15)  //PB7 Rising Edge to INT
 	}
 	else
 	{
-		// re-trigger during 
-		RTC_Reset(&pirModule);
-		RTC_UpdateClk(&pirModule);
+		MotionFlags|=bmHalt; 	// continue for sleep mode
 	}
 
+	// re-trigger during 
+	RTC_Reset(&pirModule);
+	RTC_UpdateClk(&pirModule);
 
 //	iPinPirDoci;
 	EXTI_ClearITPendingBit(EXTI_IT_Pin7);

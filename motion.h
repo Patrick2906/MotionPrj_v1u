@@ -27,6 +27,9 @@
 #define EEPROM_PIRSSLV (EEPROM_BASE+1)
 #define EEPROM_LUXSSLV (EEPROM_BASE+2)
 #define EEPROM_LOWBATTIME (EEPROM_BASE+3)
+#define EEPROM_PIRWAKEUP_HR	(EEPROM_BASE+4)
+#define EEPROM_PIRWAKEUP_MIN	(EEPROM_BASE+5)
+#define EEPROM_PIRWAKEUP_SEC	(EEPROM_BASE+6)
 
 #define PIR_PWDOWN 0x38F  //PIR IC: E93196B
 //#define DEF_PIRBITS 0xF80
@@ -120,7 +123,7 @@ typedef struct PirModule
 	bool timerTrigger;
 }PirModule;
 
-
+extern PirModule pirModule;
 extern u16 MotionFlags,MotionFlags2;
 extern u8 nLuxLevel, nPirLevel, nPirHoldTime,nLowBatTime;
 
